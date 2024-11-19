@@ -1,6 +1,7 @@
 from enum import Enum
 from types import SimpleNamespace
 from card_props import CardProperties
+from multiversx_sdk import Address
 
 # Enum for EsdtTokenType
 class EsdtTokenType(Enum):
@@ -43,13 +44,13 @@ class EsdtTokenData:
             token_type = EsdtTokenType.from_int(properties.__dict__['token_type'].__discriminant__)
             amount = properties.__dict__['amount']
             frozen = properties.__dict__['frozen']
-            # hash = properties.__dict__['hash']
+            hash = properties.__dict__['hash'].hex()
             name = properties.__dict__['name'].decode("utf-8")
             attributes = CardProperties.new_card_properties(list(properties.__dict__['attributes']))
-            # creator = properties.__dict__['creator']
+            creator = Address.new_from_hex(properties.__dict__['creator'].hex(), "erd").to_bech32()
             royalties = properties.__dict__['royalties']
             uris = properties.__dict__['uris']
-            return cls(token_type, amount, frozen, b'hash', name, attributes, b'creator', royalties, uris)
+            return cls(token_type, amount, frozen, hash, name, attributes, creator, royalties, uris)
         except ValueError as e:
             raise ValueError(f"Error creating CardProperties: {e}")
 
@@ -59,10 +60,21 @@ class EsdtTokenData:
             "token_type": self.token_type.name,
             "amount": self.amount,
             "frozen": self.frozen,
-            "hash": self.hash.decode("utf-8"),
+            "hash": self.hash,
             "name": self.name,
             "attributes": self.attributes.to_dict(),
-            "creator": self.creator.decode("utf-8"),
+            "creator": self.creator,
             "royalties": self.royalties,
             "uris": list("")
+        }
+    
+class TradableCard:
+    def __init__(self, card: EsdtTokenData, nonce: int):
+        self.card = card
+        self.nonce = nonce
+
+    def to_dict(self):
+        return {
+            "tradable_card": self.card,
+            "nonce": self.nonce
         }

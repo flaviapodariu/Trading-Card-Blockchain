@@ -1,6 +1,4 @@
 from enum import Enum
-from types import SimpleNamespace
-
 
 class Rarity(Enum):
     Common = 0
@@ -22,13 +20,13 @@ class Rarity(Enum):
 # Define Class as an Enum
 class Class(Enum):
     Warrior = 0
-    Mage = 1
-    Rogue = 2
-    Priest = 3
-    Hunter = 4
+    Mage    = 1
+    Rogue   = 2
+    Priest  = 3
+    Hunter  = 4
     Warlock = 5
-    Shaman = 6
-    Druid = 7
+    Shaman  = 6
+    Druid   = 7
     Paladin = 8
 
 
@@ -68,17 +66,6 @@ class CardProperties:
         self.rarity = rarity
         self.power = power
 
-
-    @classmethod
-    def new_card_properties(cls, properties: SimpleNamespace):
-        try:
-            class_type = Class.from_int(properties[0].__dict__['class'].__discriminant__)
-            rarity = Rarity.from_int(properties[0].__dict__['rarity'].__discriminant__)
-            power = Power.from_int(properties[0].__dict__['power'].__discriminant__)
-            return cls(class_type, rarity, power)
-        except ValueError as e:
-            raise ValueError(f"Error creating CardProperties: {e}")
-        
     @classmethod
     def new_card_properties(cls, bytes: list[int]):
         try:
