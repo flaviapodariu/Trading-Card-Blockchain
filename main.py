@@ -6,9 +6,10 @@ from multiversx_sdk.abi import Abi
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 import os
-from card_props import CardProperties
+from card_props import CardProperties, Power, Rarity, Class
 from esdt_token_data import EsdtTokenData, TradableCard
 import time
+import base64
 
 provider = ProxyNetworkProvider("https://devnet-gateway.multiversx.com")
 network_config = provider.get_network_config()
@@ -24,6 +25,8 @@ sender_bech32 = "erd1lk8k33f3m4dcas4chj3a6hpf3w89rwdhr962sjglq87kn6uq3r5q0c5ay8"
 sender_account = Address.from_bech32(sender_bech32)
 
 contract_bech32 = "erd1qqqqqqqqqqqqqpgqrqz7r8yl5dav2z0fgnn302l2w7xynygruvaq76m26j"
+contract_account = Address.from_bech32(contract_bech32)
+
 metachain_bech32 = "erd1qqqqqqqqqqqqqqqpqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzllls8a5w6u"
 
 transaction_computer = TransactionComputer()
@@ -49,7 +52,12 @@ def get_assigned_properties():
     time.sleep(30)
 
     transaction_on_network = provider.get_transaction(hash)
-    res_data = transaction_on_network.contract_results.items[0].data
+    
+    if not transaction_on_network.contract_results.items:
+        res_data = transaction_on_network.raw_response['logs']['events'][0]['topics'][1]
+        return jsonify(base64.b64decode(res_data).decode())
+    else:
+        res_data = transaction_on_network.contract_results.items[0].data
 
     hex_card_props = res_data.split('@')[2]
     properties = [int(hex_card_props[i:i+2], 16) for i in range(0, len(hex_card_props), 2)]
@@ -64,9 +72,9 @@ def get_equivalent_card():
         class_type = request.json.get('class')
         rarity = request.json.get('rarity')
         power = request.json.get("power")
-    except Exception:
-        #todo find better exc
-        raise Exception
+    except Exception as e:
+        raise e
+    
     query_runner = QueryRunnerAdapter(provider)
     query_controller = SmartContractQueriesController(query_runner, abi)
 
@@ -82,7 +90,8 @@ def get_equivalent_card():
     for nonce, card in enumerate(cards_data_list):
         card_attr = card['attributes']
         if card_attr['class'] == class_type and card_attr['rarity'] == rarity and card_attr['power'] == power:
-            return jsonify(TradableCard(card, nonce).to_dict())
+            # nonce uses 1 based indexing
+            return jsonify(TradableCard(card, nonce+1).to_dict())
     return jsonify("Not found")
 
 
@@ -92,9 +101,9 @@ def create_NFT_collection():
     try:
         collection_name = request.json.get('collection_name')
         ticker = request.json.get('ticker')
-    except Exception:
-        #todo find better exc
-        raise Exception
+    except Exception as e:
+        raise e
+    
     hex_col_name = collection_name.encode("UTF-8").hex()
     hex_ticker = ticker.encode("UTF-8").hex()
     data = f"{function_name}@{hex_col_name}@{hex_ticker}"
@@ -110,13 +119,14 @@ def create_NFT_collection():
 
     transaction_hash = sign_transaction(transaction)
 
-    time.sleep(30)
+    time.sleep(20)
 
     transaction_on_network = provider.get_transaction(transaction_hash)
 
-    #TODO Looks dogshit
-    hex_res = transaction_on_network.contract_results.items[0].data.split("@")[1]
-    res = {"nft_collection": bytearray.fromhex(hex_res).decode()}
+    res = "NFT collection could not be created"
+    if transaction_on_network.contract_results.items:
+        hex_res = transaction_on_network.contract_results.items[0].data.split("@")[1]
+        res = {"nft_collection": bytearray.fromhex(hex_res).decode()}
     return jsonify(res)
 
 
@@ -126,9 +136,8 @@ def add_NFT_roles():
     try:
         nft_collection = request.json.get('nft_collection')
         role = request.json.get('role')
-    except Exception:
-        #todo find better exc
-        raise Exception
+    except Exception as e:
+        raise e
 
     hex_collection = nft_collection.encode("UTF-8").hex()
     hex_role = role.encode("UTF-8").hex()
@@ -143,20 +152,16 @@ def add_NFT_roles():
         chain_id=network_config.chain_id,
     )
 
-    sender_nonce = provider.get_account(sender_account).nonce
-    nonce_holder = AccountNonceHolder(sender_nonce)
-
-    transaction.nonce = nonce_holder.get_nonce_then_increment()
-    transaction.signature = signer.sign(transaction_computer.compute_bytes_for_signing(transaction))
-    transaction_hash = provider.send_transaction(transaction)
+    transaction_hash = sign_transaction(transaction)
 
     time.sleep(30)
 
     transaction_on_network = provider.get_transaction(transaction_hash)
 
-    #TODO Looks dogshit
-    hex_res = transaction_on_network.contract_results.items[1].data.split("@")[1]
-    res = {"transaction": bytearray.fromhex(hex_res).decode()}
+    res = "Roles could not be added"
+    if transaction_on_network.contract_results.items:
+        hex_res = transaction_on_network.contract_results.items[1].data.split("@")[1]
+        res = {"transaction": bytearray.fromhex(hex_res).decode()}
     return jsonify(res)
 
 
@@ -166,13 +171,13 @@ def create_NFT_with_properties():
     try:
         nft_collection = request.json.get('nft_collection')
         name = request.json.get('name')
-        class_type = int(request.json.get('class'))
-        rarity = int(request.json.get('rarity'))
-        power = int(request.json.get("power"))
-    except Exception:
-        #todo find better exc
-        raise Exception
+        class_type = Class.from_string(request.json.get('class'))
+        rarity = Rarity.from_string(request.json.get('rarity'))
+        power = Power.from_string(request.json.get("power"))
+    except Exception as e:
+        raise e
     
+
     hex_collection = nft_collection.encode("UTF-8").hex()
     hex_name = name.encode("UTF-8").hex()
 
@@ -203,36 +208,53 @@ def create_NFT_with_properties():
 
     transaction_hash = sign_transaction(transaction)
 
-    time.sleep(4)
+    time.sleep(15)
 
     transaction_on_network = provider.get_transaction(transaction_hash)
 
-    #TODO Looks dogshit
-    hex_res = transaction_on_network.contract_results.items[0].data.split("@")[2]
-    res = {
-        "nft_nonce": int(hex_res, 16)
-    }
+    res = "NFT could not be created"
+    if transaction_on_network.contract_results.items:
+        hex_res = transaction_on_network.contract_results.items[0].data.split("@")[2]
+        res = {"nft_nonce": int(hex_res, 16)}
     return jsonify(res)
 
 
-#TODO
 @app.route("/nft/exchange", methods=["POST"])
 def exchange_cards():
+    hex_contract_endpoint = "exchangeNft".encode("utf-8").hex()
+    function_name = "ESDTNFTTransfer"
+    data = f"{function_name}"
+    try:
+        supply_nonce = int(request.json.get("supply_nonce"))
+        collection = request.json.get("collection")
+        nft_nonce = request.json.get("nft_nonce")
+    except Exception as e:
+        raise e
+    
+    hex_collection = collection.encode("UTF-8").hex()
+    token_amount = 1
+    token_data = f"{hex_collection}@{nft_nonce:02x}@{token_amount:02x}"
+    contract_data = f"{contract_account.hex()}@{hex_contract_endpoint}@{supply_nonce:02x}"
 
-    return jsonify()
+    data = f"{function_name}@{token_data}@{contract_data}"
 
-
-#TODO
-def transfer_NFT():
-    data = ""
     transaction = Transaction(
-    sender=sender_bech32,
-    receiver=sender_bech32,
-    value=0,
-    gas_limit=40000000 + len(data) * 1500,
-    chain_id=network_config.chain_id,
-    data=data.encode("UTF-8")
-)
+        sender=sender_bech32,
+        receiver=sender_bech32,
+        value=0,
+        gas_limit=50000000 + len(data) * 1500,
+        data=data.encode("UTF-8"),
+        chain_id=network_config.chain_id
+    )
+    transaction_hash = sign_transaction(transaction)
+
+    time.sleep(30)
+
+    transaction_on_network = provider.get_transaction(transaction_hash)
+    hex_res = transaction_on_network.status.status
+
+    return jsonify({"status": hex_res})
+
 
 
 # Signs transaction and increments the sender's nonce

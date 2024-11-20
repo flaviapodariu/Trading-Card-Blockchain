@@ -12,6 +12,13 @@ class Rarity(Enum):
             return cls(value)
         except ValueError:
             raise ValueError("Invalid integer for Rarity")
+        
+    @classmethod
+    def from_string(cls, str_rarity: str):
+        try:
+           return cls[str_rarity].value
+        except KeyError:
+            raise ValueError(f"Invalid string for {cls.__name__}: {str_rarity}")    
 
     def __str__(self):
         return self.name
@@ -37,6 +44,13 @@ class Class(Enum):
         except ValueError:
             raise ValueError("invalid integer for Class")
         
+    @classmethod
+    def from_string(cls, str_class: str):
+        try:
+           return cls[str_class].value
+        except KeyError:
+            raise ValueError(f"Invalid string for {cls.__name__}: {str_class}")
+        
     def __str__(self):
         return self.name
 
@@ -53,6 +67,13 @@ class Power(Enum):
             return cls(value)
         except ValueError:
             raise ValueError("invalid integer for Power")
+    
+    @classmethod
+    def from_string(cls, str_power: str):
+        try:
+           return cls[str_power].value
+        except KeyError:
+            raise ValueError(f"Invalid string for {cls.__name__}: {str_power}")
         
     def __str__(self):
         return self.name
